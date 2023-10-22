@@ -1,4 +1,5 @@
 import datetime
+from collections.abc import Iterable
 
 from django.contrib.admin.templatetags.admin_urls import add_preserved_filters
 from django.contrib.admin.utils import (
@@ -298,6 +299,29 @@ def items_for_result(cl, result, form):
         yield format_html("<td>{}</td>", form[cl.model._meta.pk.name])
 
 
+def row_classes_for_result(cl, result, form):
+    """
+    Generate the html class string for the table row.
+    """
+    row_classes = list()
+    for field_name in cl.list_display_classes:
+        try:
+            f, attr, value = lookup_field(field_name, result, cl.model_admin)
+
+            if isinstance(value, Iterable) and not isinstance(value, str):
+                for html_class in value:
+                    row_classes.append(str(html_class).replace(" ", "_"))
+            elif value is not None and value != "":
+                row_classes.append(str(value).replace(" ", "_"))
+
+        except ObjectDoesNotExist:
+            pass
+
+    if len(row_classes) == 0:
+        return ""
+    return format_html(' class="{}"', " ".join(row_classes))
+
+
 class ResultList(list):
     """
     Wrapper class used to return items in a list_editable changelist, annotated
@@ -305,18 +329,27 @@ class ResultList(list):
     backwards compatibility with existing admin templates.
     """
 
-    def __init__(self, form, *items):
+    def __init__(self, form, row_classes, *items):
         self.form = form
+        self.row_classes = row_classes
         super().__init__(*items)
 
 
 def results(cl):
     if cl.formset:
         for res, form in zip(cl.result_list, cl.formset.forms):
-            yield ResultList(form, items_for_result(cl, res, form))
+            yield ResultList(
+                form,
+                row_classes_for_result(cl, res, form),
+                items_for_result(cl, res, form),
+            )
     else:
         for res in cl.result_list:
-            yield ResultList(None, items_for_result(cl, res, None))
+            yield ResultList(
+                None,
+                row_classes_for_result(cl, res, None),
+                items_for_result(cl, res, None),
+            )
 
 
 def result_hidden_fields(cl):
